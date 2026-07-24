@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mergington High School Activities</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/html5-qrcode"></script>
   </head>
   <body>
     <header>
@@ -39,7 +40,23 @@
         </form>
         <div id="message" class="hidden"></div>
       </section>
-    </main>
+
+      <section id="ticket-container" class="hidden">
+        <h3>Your Ticket</h3>
+        <div id="ticket-details">
+          <!-- Ticket will be displayed here -->
+        </div>
+      </section>
+
+      <section id="checkin-container" class="hidden">
+        <h3>Check In (Scanner)</h3>
+        <div id="scanner-container">
+          <div id="qr-scanner" style="width: 100%; height: 300px; border: 1px solid #ccc; margin-bottom: 15px;"></div>
+          <p id="scanner-status" style="text-align: center; color: #666;">Initializing scanner...</p>
+          <button id="scanner-toggle-btn" class="secondary-btn" type="button">Stop Scanner</button>
+        </div>
+        <div id="checkin-result" class="hidden"></div>
+      </section>
 
     <footer>
       <p>&copy; 2026 Mergington High School</p>
