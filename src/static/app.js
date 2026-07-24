@@ -132,6 +132,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response.ok) {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
+        
+        // Display the ticket with QR code
+        displayTicket(activity, result.ticket_id);
+        
         signupForm.reset();
 
         // Refresh activities list to show updated participants
@@ -154,6 +158,171 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error signing up:", error);
     }
   });
+
+  // Display ticket with QR code
+  async function displayTicket(activity, ticketId) {
+    const ticketContainer = document.getElementById("ticket-container");
+    const ticketDetails = document.getElementById("ticket-details");
+
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/ticket/${ticketId}`
+      );
+
+      if (response.ok) {
+        const ticketData = await response.json();
+
+        const checkinStatus = ticketData.checked_in
+          ? `<div class="checkin-status checked-in">✓ Checked In</div>`
+          : `<div class="checkin-status not-checked-in">⚠ Not Yet Checked In</div>`;
+
+        ticketDetails.innerHTML = `
+          <div class="ticket-card">
+            <h4>${activity} - Event Ticket</h4>
+            <div class="qr-code-container">
+              <img src="data:image/png;base64,${ticketData.qr_code}" alt="QR Code" />
+            </div>
+            <div class="ticket-info">
+              <p><strong>Ticket ID:</strong> ${ticketId}</p>
+              <p><strong>Email:</strong> ${ticketData.email}</p>
+              <p><strong>Registered:</strong> ${new Date(ticketData.registered_at).toLocaleString()}</p>
+              ${ticketData.checked_in_at ? `<p><strong>Checked In:</strong> ${new Date(ticketData.checked_in_at).toLocaleString()}</p>` : ''}
+            </div>
+            ${checkinStatus}
+            <button id="show-scanner-btn" class="secondary-btn" type="button">Show Scanner for Check-In</button>
+            <button id="close-ticket-btn" class="secondary-btn" type="button">Close Ticket</button>
+          </div>
+        `;
+
+        ticketContainer.classList.remove("hidden");
+
+        // Add event listeners for ticket buttons
+        document.getElementById("show-scanner-btn").addEventListener("click", () => {
+          initializeScanner(activity, ticketId);
+        });
+
+        document.getElementById("close-ticket-btn").addEventListener("click", () => {
+          ticketContainer.classList.add("hidden");
+        });
+      } else {
+        console.error("Failed to fetch ticket details");
+      }
+    } catch (error) {
+      console.error("Error displaying ticket:", error);
+    }
+  }
+
+  // Initialize QR code scanner
+  let html5QrCodeScanner = null;
+  let isScanning = false;
+
+  async function initializeScanner(activity, ticketId) {
+    const checkinContainer = document.getElementById("checkin-container");
+    const scannerContainer = document.getElementById("qr-scanner");
+    const scannerStatus = document.getElementById("scanner-status");
+    const scannerToggle = document.getElementById("scanner-toggle-btn");
+    const checkinResult = document.getElementById("checkin-result");
+
+    checkinContainer.classList.remove("hidden");
+    checkinResult.classList.add("hidden");
+
+    if (isScanning) {
+      return;
+    }
+
+    isScanning = true;
+    scannerStatus.textContent = "Camera access requested...";
+
+    try {
+      html5QrCodeScanner = new Html5QrcodeScanner(
+        "qr-scanner",
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        false
+      );
+
+      html5QrCodeScanner.render(
+        async (decodedText) => {
+          // When QR code is successfully scanned
+          scannerStatus.textContent = "Processing...";
+          html5QrCodeScanner.clear();
+          isScanning = false;
+
+          // Send check-in request
+          await processCheckin(activity, decodedText, checkinResult, scannerStatus);
+
+          scannerToggle.textContent = "Start Scanner";
+        },
+        (error) => {
+          // Ignore scanning errors
+          if (error && !error.toString().includes("NotFound")) {
+            console.log("QR scan error:", error);
+          }
+        }
+      );
+
+      scannerStatus.textContent = "Scanner ready - point at QR code";
+      scannerToggle.textContent = "Stop Scanner";
+
+      scannerToggle.onclick = () => {
+        if (html5QrCodeScanner) {
+          html5QrCodeScanner.clear();
+          isScanning = false;
+          scannerToggle.textContent = "Start Scanner";
+          scannerStatus.textContent = "Scanner stopped";
+          scannerToggle.onclick = () => initializeScanner(activity, ticketId);
+        }
+      };
+    } catch (error) {
+      scannerStatus.textContent = "Error: Could not access camera. Make sure you allow camera access.";
+      console.error("Scanner error:", error);
+      isScanning = false;
+    }
+  }
+
+  // Process check-in
+  async function processCheckin(activity, ticketId, checkinResult, scannerStatus) {
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/checkin?ticket_id=${encodeURIComponent(ticketId)}`,
+        {
+          method: "POST",
+        }
+      );
+
+      const result = await response.json();
+      checkinResult.classList.remove("hidden");
+
+      if (response.ok) {
+        checkinResult.className = "checkin-result success";
+        checkinResult.innerHTML = `
+          <h5>✓ Check-In Successful!</h5>
+          <p>${result.message}</p>
+          <p><strong>Checked in at:</strong> ${new Date(result.checked_in_at).toLocaleString()}</p>
+        `;
+        scannerStatus.textContent = "Check-in successful! You can close this window.";
+      } else {
+        checkinResult.className = "checkin-result error";
+        checkinResult.innerHTML = `
+          <h5>✗ Check-In Failed</h5>
+          <p>${result.detail || "An error occurred during check-in"}</p>
+        `;
+        scannerStatus.textContent = "Check-in failed. Try again.";
+      }
+
+      // Hide result after 5 seconds
+      setTimeout(() => {
+        checkinResult.classList.add("hidden");
+      }, 5000);
+    } catch (error) {
+      checkinResult.classList.remove("hidden");
+      checkinResult.className = "checkin-result error";
+      checkinResult.innerHTML = `
+        <h5>✗ Error</h5>
+        <p>Failed to process check-in. Please try again.</p>
+      `;
+      console.error("Check-in error:", error);
+    }
+  }
 
   // Initialize app
   fetchActivities();
